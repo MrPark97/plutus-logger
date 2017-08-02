@@ -1,0 +1,7 @@
+#*.*#
+*.*~
+*.*.sw*
+conf/migrations.yml
+*.test
+plutus-logger
+;
