@@ -29,7 +29,7 @@ func NewRabbitMQWriter() *RabbitMQWriter {
 func (r *RabbitMQWriter) Write(p []byte) (n int, err error) {
 	err = r.Channel.Publish(
 		"plutus-metrics",                // exchange
-		"plutus-metrics-service.system", // routing key
+		"plutus-logger-service.system", // routing key
 		false, // mandatory
 		false, // immediate
 		amqp.Publishing{
