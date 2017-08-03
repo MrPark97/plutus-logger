@@ -2,14 +2,12 @@ package main
 
 import (
 	"github.com/bshuster-repo/logrus-logstash-hook"
-	"github.com/sirupsen/logrus"
 	"github.com/rcrowley/go-metrics"
 	"github.com/rubyist/circuitbreaker"
+	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
-	"log/syslog"
+	"net"
 	"time"
-
-	logrus_syslog "github.com/sirupsen/logrus/hooks/syslog"
 )
 
 // Init logstash and rabbit URLs for connection
@@ -86,12 +84,12 @@ func (r *RabbitMQ) Listen() error {
 
 	err = ch.ExchangeDeclare(
 		"plutus-logger", // name
-		"topic",   // type
-		true,      // durable
-		false,     // auto-deleted
-		false,     // internal
-		false,     // no-wait
-		nil,       // arguments
+		"topic",         // type
+		true,            // durable
+		false,           // auto-deleted
+		false,           // internal
+		false,           // no-wait
+		nil,             // arguments
 	)
 
 	q, err := ch.QueueDeclare(
@@ -104,8 +102,8 @@ func (r *RabbitMQ) Listen() error {
 	)
 
 	err = ch.QueueBind(
-		q.Name,    // queue name
-		"#",       // routing key
+		q.Name,          // queue name
+		"#",             // routing key
 		"plutus-logger", // exchange
 		false,
 		nil)
@@ -171,17 +169,21 @@ func (e ErrConnect) Error() string {
 
 // initialize logger
 func init() {
-
 	// create two loggers for self and for others
 	log = logrus.New()
 	rabbitLogs = logrus.New()
 
-	// add formatter (json format) to self and others logs
-	log.Formatter = logrustash.DefaultFormatter(logrus.Fields{"type": "logs"})
-	rabbitLogs.Formatter = logrustash.DefaultFormatter(logrus.Fields{"type": "logs"})
+	//init connection for logstash hook
+	conn, err := net.Dial("tcp", logStashURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// create hook which will send logs to logstash
-	hook, err := logrus_syslog.NewSyslogHook("tcp", logStashURL, syslog.LOG_INFO, "")
+	// create logstash hook with formatter (json logstash format) to self and others logs
+	hook := logrustash.New(conn, logrustash.DefaultFormatter(logrus.Fields{"type": "logs"}))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -191,8 +193,8 @@ func init() {
 	rabbitLogs.Hooks.Add(hook)
 
 	contextLogger = log.WithFields(logrus.Fields{
-    "service": "plutus-logger",
-  })
+		"service": "plutus-logger",
+	})
 }
 
 func main() {
@@ -287,8 +289,8 @@ func writeLogsToTCP(jsonData []byte, routingKey string, errChan chan<- error, cb
 	cb.Call(func() error {
 		// add routing key field and send logs
 		rabbitLogs.WithFields(logrus.Fields{
-	    "service": routingKey,
-	  }).Infoln(string(jsonData))
+			"service": routingKey,
+		}).Infoln(string(jsonData))
 
 		return nil
 	}, time.Second*10)

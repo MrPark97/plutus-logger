@@ -43,12 +43,12 @@ func (r *RabbitMQWriter) Write(p []byte) (n int, err error) {
 func (r *RabbitMQWriter) Init() {
 	err := r.Channel.ExchangeDeclare(
 		"plutus-metrics", // name
-		"topic",      // type
-		true,         // durable
-		false,        // auto-deleted
-		false,        // internal
-		false,        // no-wait
-		nil,          // arguments
+		"topic",          // type
+		true,             // durable
+		false,            // auto-deleted
+		false,            // internal
+		false,            // no-wait
+		nil,              // arguments
 	)
 	if err != nil {
 		log.Fatal(err)
