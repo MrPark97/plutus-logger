@@ -7,6 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -103,7 +104,7 @@ func (r *RabbitMQ) Listen() error {
 
 	err = ch.QueueBind(
 		q.Name,          // queue name
-		"#",             // routing key
+		"*.*",           // routing key
 		"plutus-logger", // exchange
 		false,
 		nil)
@@ -135,7 +136,7 @@ func (r *RabbitMQ) Listen() error {
 					cb.Reset()
 					contextLogger.Fatalln("[x] service stopped")
 				case circuit.BreakerFail:
-					err := writeLogsToTCP(CurrentMessage.Body, CurrentMessage.RoutingKey, r.ErrChan, cb)
+					err := writeLogsToTCP(CurrentMessage.Body, CurrentMessage.RoutingKey)
 					if err != nil {
 						r.ErrChan <- err
 					}
@@ -146,9 +147,9 @@ func (r *RabbitMQ) Listen() error {
 
 		for d := range msgs {
 			CurrentMessage = d
-			contextLogger.Infof(" [x] %s\n %s\n\n\n", d.RoutingKey, d.Body)
+
 			// write metrics to TCP send error or acknnowledge
-			err := writeLogsToTCP(d.Body, d.RoutingKey, r.ErrChan, cb)
+			err := writeLogsToTCP(d.Body, d.RoutingKey)
 			if err != nil {
 				r.ErrChan <- err
 			} else {
@@ -281,22 +282,35 @@ func failOnError(errChan <-chan error) {
 }
 
 // write logs to TCP (elastic logstash)
-func writeLogsToTCP(jsonData []byte, routingKey string, errChan chan<- error, cb *circuit.Breaker) error {
-	// try send logs(via TCP to logstash)
-	var (
-		err error
-	)
-	cb.Call(func() error {
-		// add routing key field and send logs
-		rabbitLogs.WithFields(logrus.Fields{
-			"service": routingKey,
-		}).Infoln(string(jsonData))
+func writeLogsToTCP(jsonData []byte, routingKey string) error {
 
+	// split rountingKey to get service-name and log level
+	routingSubKeys := strings.Split(routingKey, `.`)
+	serviceName := routingSubKeys[0]
+	logLevel := routingSubKeys[1]
+
+	// add service-name field
+	rabbitContextLogger := rabbitLogs.WithFields(logrus.Fields{
+		"service": serviceName,
+	})
+
+	// send log corresponding to the level
+	switch logLevel {
+	case "panic":
+		rabbitContextLogger.Panicln(string(jsonData))
+	case "fatal":
+		rabbitContextLogger.Fatalln(string(jsonData))
+	case "error":
+		rabbitContextLogger.Errorln(string(jsonData))
+	case "warn":
+		rabbitContextLogger.Warnln(string(jsonData))
+	case "info":
+		rabbitContextLogger.Infoln(string(jsonData))
+	case "debug":
+		rabbitContextLogger.Debugln(string(jsonData))
+	default:
 		return nil
-	}, time.Second*10)
-	if err != nil {
-		return ErrConnect(err.Error())
 	}
 
-	return err
+	return nil
 }
